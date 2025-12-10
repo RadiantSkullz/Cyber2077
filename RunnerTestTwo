@@ -1,0 +1,534 @@
+import React, { useState, useRef, useEffect } from 'react';
+import { X, Minus, ChevronDown, Check, Trash2, Settings } from 'lucide-react';
+
+const CyberUI = () => {
+  const [windows, setWindows] = useState([]);
+  const [notifications, setNotifications] = useState([]);
+  
+  // Demo window creation
+  useEffect(() => {
+    const demoWindow = createWindow({
+      title: "CyberUI Demo",
+      subtitle: "Cyberpunk Interface Library",
+      closable: true
+    });
+    
+    const mainTab = demoWindow.addTab("Main", "home");
+    const settingsTab = demoWindow.addTab("Settings", "settings");
+    const extraTab = demoWindow.addTab("Extra", "extra");
+    
+    // Main Tab Elements
+    mainTab.addButton({
+      name: "Test Button",
+      description: "Click me for a notification",
+      callback: () => {
+        createNotification({
+          title: "Button Clicked!",
+          description: "This is a test notification",
+          duration: 3000
+        });
+      }
+    });
+    
+    mainTab.addToggle({
+      name: "Enable Feature",
+      description: "Toggle this feature on/off",
+      default: false,
+      callback: (value) => console.log("Toggle:", value)
+    });
+    
+    mainTab.addSlider({
+      name: "Speed Multiplier",
+      description: "Adjust the speed value",
+      min: 0,
+      max: 100,
+      default: 50,
+      callback: (value) => console.log("Slider:", value)
+    });
+    
+    mainTab.addDropdown({
+      name: "Select Mode",
+      description: "Choose your preferred mode",
+      options: ["Mode A", "Mode B", "Mode C"],
+      default: "Mode A",
+      callback: (value) => console.log("Dropdown:", value)
+    });
+    
+    // Settings Tab Elements
+    settingsTab.addInput({
+      name: "Username",
+      description: "Enter your username",
+      placeholder: "Username...",
+      callback: (value) => console.log("Input:", value)
+    });
+    
+    settingsTab.addColorPicker({
+      name: "Theme Color",
+      description: "Customize the UI accent color",
+      default: "#00ffff",
+      callback: (value) => console.log("Color:", value)
+    });
+    
+    settingsTab.addKeybind({
+      name: "Toggle Menu",
+      description: "Press a key to bind",
+      default: "F1",
+      callback: (key) => console.log("Keybind:", key)
+    });
+    
+    // Extra Tab Elements
+    extraTab.addLabel("This is a label element");
+    extraTab.addParagraph("This is a paragraph with more detailed text that can span multiple lines and provide information to the user.");
+    
+    setWindows([demoWindow]);
+  }, []);
+  
+  function createWindow(config) {
+    const windowObj = {
+      id: Date.now(),
+      title: config.title || "Untitled",
+      subtitle: config.subtitle || "",
+      closable: config.closable !== false,
+      tabs: [],
+      activeTab: 0,
+      position: { x: 50, y: 50 },
+      minimized: false,
+      addTab: function(name, icon) {
+        const tab = {
+          name,
+          icon,
+          elements: [],
+          addButton: function(config) {
+            this.elements.push({ type: 'button', ...config });
+          },
+          addToggle: function(config) {
+            this.elements.push({ type: 'toggle', ...config, value: config.default || false });
+          },
+          addSlider: function(config) {
+            this.elements.push({ type: 'slider', ...config, value: config.default || config.min || 0 });
+          },
+          addDropdown: function(config) {
+            this.elements.push({ type: 'dropdown', ...config, value: config.default || config.options[0], open: false });
+          },
+          addInput: function(config) {
+            this.elements.push({ type: 'input', ...config, value: '' });
+          },
+          addColorPicker: function(config) {
+            this.elements.push({ type: 'colorpicker', ...config, value: config.default || '#00ffff' });
+          },
+          addKeybind: function(config) {
+            this.elements.push({ type: 'keybind', ...config, value: config.default || 'None', listening: false });
+          },
+          addLabel: function(text) {
+            this.elements.push({ type: 'label', text });
+          },
+          addParagraph: function(text) {
+            this.elements.push({ type: 'paragraph', text });
+          }
+        };
+        this.tabs.push(tab);
+        return tab;
+      }
+    };
+    return windowObj;
+  }
+  
+  function createNotification(config) {
+    const notif = {
+      id: Date.now(),
+      title: config.title || "Notification",
+      description: config.description || "",
+      duration: config.duration || 3000
+    };
+    
+    setNotifications(prev => [...prev, notif]);
+    
+    setTimeout(() => {
+      setNotifications(prev => prev.filter(n => n.id !== notif.id));
+    }, notif.duration);
+  }
+  
+  return (
+    <div className="fixed inset-0 bg-gradient-to-br from-slate-950 via-purple-950 to-slate-950 overflow-hidden font-mono">
+      {/* Cyberpunk grid background */}
+      <div className="absolute inset-0 opacity-10">
+        <div className="absolute inset-0" style={{
+          backgroundImage: 'linear-gradient(#00ffff 1px, transparent 1px), linear-gradient(90deg, #00ffff 1px, transparent 1px)',
+          backgroundSize: '50px 50px'
+        }}></div>
+      </div>
+      
+      {/* Windows */}
+      {windows.map(window => (
+        <Window 
+          key={window.id} 
+          window={window} 
+          setWindows={setWindows}
+        />
+      ))}
+      
+      {/* Notifications */}
+      <div className="fixed top-4 right-4 z-50 space-y-2">
+        {notifications.map(notif => (
+          <Notification key={notif.id} notification={notif} />
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const Window = ({ window, setWindows }) => {
+  const [position, setPosition] = useState(window.position);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const windowRef = useRef(null);
+  
+  const handleMouseDown = (e) => {
+    if (e.target.closest('.no-drag')) return;
+    setIsDragging(true);
+    const rect = windowRef.current.getBoundingClientRect();
+    setDragOffset({
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top
+    });
+  };
+  
+  useEffect(() => {
+    const handleMouseMove = (e) => {
+      if (isDragging) {
+        setPosition({
+          x: e.clientX - dragOffset.x,
+          y: e.clientY - dragOffset.y
+        });
+      }
+    };
+    
+    const handleMouseUp = () => {
+      setIsDragging(false);
+    };
+    
+    if (isDragging) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+    }
+    
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging, dragOffset]);
+  
+  const updateElement = (tabIndex, elementIndex, updates) => {
+    setWindows(prev => prev.map(w => {
+      if (w.id === window.id) {
+        const newTabs = [...w.tabs];
+        newTabs[tabIndex].elements[elementIndex] = {
+          ...newTabs[tabIndex].elements[elementIndex],
+          ...updates
+        };
+        return { ...w, tabs: newTabs };
+      }
+      return w;
+    }));
+  };
+  
+  const setActiveTab = (index) => {
+    setWindows(prev => prev.map(w => 
+      w.id === window.id ? { ...w, activeTab: index } : w
+    ));
+  };
+  
+  return (
+    <div
+      ref={windowRef}
+      className="absolute w-[600px] bg-slate-900/95 backdrop-blur-md rounded-lg overflow-hidden shadow-2xl border border-cyan-500/30 transition-all"
+      style={{
+        left: `${position.x}px`,
+        top: `${position.y}px`,
+        boxShadow: '0 0 40px rgba(0, 255, 255, 0.2), inset 0 0 20px rgba(0, 255, 255, 0.05)'
+      }}
+    >
+      {/* Header */}
+      <div 
+        className="bg-gradient-to-r from-slate-800 to-slate-900 p-4 cursor-move border-b border-cyan-500/30 relative overflow-hidden"
+        onMouseDown={handleMouseDown}
+      >
+        <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/0 via-cyan-500/10 to-cyan-500/0 animate-pulse"></div>
+        <div className="flex justify-between items-center relative z-10">
+          <div>
+            <h2 className="text-cyan-400 text-lg font-bold tracking-wider">{window.title}</h2>
+            {window.subtitle && (
+              <p className="text-cyan-500/60 text-xs">{window.subtitle}</p>
+            )}
+          </div>
+          <div className="flex gap-2 no-drag">
+            <button className="w-8 h-8 bg-slate-700/50 hover:bg-cyan-500/20 rounded border border-cyan-500/30 flex items-center justify-center transition-all hover:shadow-lg hover:shadow-cyan-500/50">
+              <Minus size={16} className="text-cyan-400" />
+            </button>
+            {window.closable && (
+              <button className="w-8 h-8 bg-slate-700/50 hover:bg-red-500/20 rounded border border-red-500/30 flex items-center justify-center transition-all hover:shadow-lg hover:shadow-red-500/50">
+                <X size={16} className="text-red-400" />
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+      
+      {/* Tabs */}
+      <div className="flex bg-slate-800/50 border-b border-cyan-500/20 px-2 pt-2">
+        {window.tabs.map((tab, index) => (
+          <button
+            key={index}
+            onClick={() => setActiveTab(index)}
+            className={`px-4 py-2 rounded-t transition-all relative ${
+              window.activeTab === index
+                ? 'bg-slate-900 text-cyan-400 border-t border-x border-cyan-500/30'
+                : 'text-cyan-500/60 hover:text-cyan-400 hover:bg-slate-800/80'
+            }`}
+          >
+            {window.activeTab === index && (
+              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-cyan-400 to-transparent"></div>
+            )}
+            {tab.name}
+          </button>
+        ))}
+      </div>
+      
+      {/* Content */}
+      <div className="p-4 max-h-[500px] overflow-y-auto custom-scrollbar">
+        {window.tabs[window.activeTab]?.elements.map((element, index) => (
+          <Element
+            key={index}
+            element={element}
+            onUpdate={(updates) => updateElement(window.activeTab, index, updates)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const Element = ({ element, onUpdate }) => {
+  switch (element.type) {
+    case 'button':
+      return (
+        <div className="mb-3 p-3 bg-slate-800/40 rounded border border-cyan-500/20 hover:border-cyan-500/40 transition-all group">
+          <button
+            onClick={element.callback}
+            className="w-full py-2 bg-gradient-to-r from-cyan-600 to-cyan-500 hover:from-cyan-500 hover:to-cyan-400 text-white rounded font-semibold transition-all shadow-lg shadow-cyan-500/30 hover:shadow-cyan-500/50"
+          >
+            {element.name}
+          </button>
+          {element.description && (
+            <p className="text-xs text-cyan-500/60 mt-2">{element.description}</p>
+          )}
+        </div>
+      );
+      
+    case 'toggle':
+      return (
+        <div className="mb-3 p-3 bg-slate-800/40 rounded border border-cyan-500/20 hover:border-cyan-500/40 transition-all">
+          <div className="flex justify-between items-center">
+            <div className="flex-1">
+              <p className="text-cyan-300 font-semibold">{element.name}</p>
+              {element.description && (
+                <p className="text-xs text-cyan-500/60 mt-1">{element.description}</p>
+              )}
+            </div>
+            <button
+              onClick={() => {
+                const newValue = !element.value;
+                onUpdate({ value: newValue });
+                element.callback?.(newValue);
+              }}
+              className={`w-12 h-6 rounded-full transition-all relative ${
+                element.value ? 'bg-cyan-500' : 'bg-slate-700'
+              }`}
+              style={{
+                boxShadow: element.value ? '0 0 20px rgba(0, 255, 255, 0.5)' : 'none'
+              }}
+            >
+              <div
+                className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${
+                  element.value ? 'right-1' : 'left-1'
+                }`}
+              ></div>
+            </button>
+          </div>
+        </div>
+      );
+      
+    case 'slider':
+      return (
+        <div className="mb-3 p-3 bg-slate-800/40 rounded border border-cyan-500/20 hover:border-cyan-500/40 transition-all">
+          <div className="flex justify-between items-center mb-2">
+            <p className="text-cyan-300 font-semibold">{element.name}</p>
+            <span className="text-cyan-400 text-sm font-mono">{element.value}</span>
+          </div>
+          {element.description && (
+            <p className="text-xs text-cyan-500/60 mb-2">{element.description}</p>
+          )}
+          <input
+            type="range"
+            min={element.min}
+            max={element.max}
+            value={element.value}
+            onChange={(e) => {
+              const newValue = Number(e.target.value);
+              onUpdate({ value: newValue });
+              element.callback?.(newValue);
+            }}
+            className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer slider-thumb"
+            style={{
+              background: `linear-gradient(to right, #06b6d4 0%, #06b6d4 ${((element.value - element.min) / (element.max - element.min)) * 100}%, #334155 ${((element.value - element.min) / (element.max - element.min)) * 100}%, #334155 100%)`
+            }}
+          />
+        </div>
+      );
+      
+    case 'dropdown':
+      return (
+        <div className="mb-3 p-3 bg-slate-800/40 rounded border border-cyan-500/20 hover:border-cyan-500/40 transition-all relative">
+          <p className="text-cyan-300 font-semibold mb-2">{element.name}</p>
+          {element.description && (
+            <p className="text-xs text-cyan-500/60 mb-2">{element.description}</p>
+          )}
+          <button
+            onClick={() => onUpdate({ open: !element.open })}
+            className="w-full p-2 bg-slate-700/50 hover:bg-slate-700 border border-cyan-500/30 rounded flex justify-between items-center text-cyan-300 transition-all"
+          >
+            {element.value}
+            <ChevronDown size={16} className={`transition-transform ${element.open ? 'rotate-180' : ''}`} />
+          </button>
+          {element.open && (
+            <div className="absolute left-0 right-0 mt-1 bg-slate-800 border border-cyan-500/30 rounded shadow-xl z-10 overflow-hidden">
+              {element.options.map((option, i) => (
+                <button
+                  key={i}
+                  onClick={() => {
+                    onUpdate({ value: option, open: false });
+                    element.callback?.(option);
+                  }}
+                  className="w-full p-2 text-left text-cyan-300 hover:bg-cyan-500/20 transition-all flex items-center justify-between"
+                >
+                  {option}
+                  {element.value === option && <Check size={16} className="text-cyan-400" />}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+      
+    case 'input':
+      return (
+        <div className="mb-3 p-3 bg-slate-800/40 rounded border border-cyan-500/20 hover:border-cyan-500/40 transition-all">
+          <p className="text-cyan-300 font-semibold mb-2">{element.name}</p>
+          {element.description && (
+            <p className="text-xs text-cyan-500/60 mb-2">{element.description}</p>
+          )}
+          <input
+            type="text"
+            placeholder={element.placeholder || ""}
+            value={element.value}
+            onChange={(e) => {
+              onUpdate({ value: e.target.value });
+              element.callback?.(e.target.value);
+            }}
+            className="w-full p-2 bg-slate-700/50 border border-cyan-500/30 rounded text-cyan-300 placeholder-cyan-500/40 focus:outline-none focus:border-cyan-400 focus:shadow-lg focus:shadow-cyan-500/20 transition-all"
+          />
+        </div>
+      );
+      
+    case 'colorpicker':
+      return (
+        <div className="mb-3 p-3 bg-slate-800/40 rounded border border-cyan-500/20 hover:border-cyan-500/40 transition-all">
+          <p className="text-cyan-300 font-semibold mb-2">{element.name}</p>
+          {element.description && (
+            <p className="text-xs text-cyan-500/60 mb-2">{element.description}</p>
+          )}
+          <div className="flex gap-2 items-center">
+            <input
+              type="color"
+              value={element.value}
+              onChange={(e) => {
+                onUpdate({ value: e.target.value });
+                element.callback?.(e.target.value);
+              }}
+              className="w-12 h-12 rounded cursor-pointer border-2 border-cyan-500/30"
+            />
+            <span className="text-cyan-400 font-mono">{element.value}</span>
+          </div>
+        </div>
+      );
+      
+    case 'keybind':
+      return (
+        <div className="mb-3 p-3 bg-slate-800/40 rounded border border-cyan-500/20 hover:border-cyan-500/40 transition-all">
+          <div className="flex justify-between items-center">
+            <div className="flex-1">
+              <p className="text-cyan-300 font-semibold">{element.name}</p>
+              {element.description && (
+                <p className="text-xs text-cyan-500/60 mt-1">{element.description}</p>
+              )}
+            </div>
+            <button
+              onClick={() => {
+                if (!element.listening) {
+                  onUpdate({ listening: true });
+                  const handleKey = (e) => {
+                    e.preventDefault();
+                    onUpdate({ value: e.key, listening: false });
+                    element.callback?.(e.key);
+                    document.removeEventListener('keydown', handleKey);
+                  };
+                  document.addEventListener('keydown', handleKey);
+                }
+              }}
+              className={`px-3 py-1 rounded border transition-all font-mono text-sm ${
+                element.listening
+                  ? 'bg-cyan-500/20 border-cyan-400 text-cyan-400 animate-pulse'
+                  : 'bg-slate-700/50 border-cyan-500/30 text-cyan-300 hover:bg-slate-700'
+              }`}
+            >
+              {element.listening ? '...' : element.value}
+            </button>
+          </div>
+        </div>
+      );
+      
+    case 'label':
+      return (
+        <div className="mb-3 p-2 text-cyan-300 font-semibold text-sm">
+          {element.text}
+        </div>
+      );
+      
+    case 'paragraph':
+      return (
+        <div className="mb-3 p-3 bg-slate-800/20 rounded border border-cyan-500/10 text-cyan-400/80 text-sm leading-relaxed">
+          {element.text}
+        </div>
+      );
+      
+    default:
+      return null;
+  }
+};
+
+const Notification = ({ notification }) => {
+  return (
+    <div className="w-80 bg-slate-900/95 backdrop-blur-md border border-cyan-500/30 rounded-lg p-4 shadow-2xl animate-slide-in"
+         style={{ boxShadow: '0 0 30px rgba(0, 255, 255, 0.3)' }}>
+      <div className="flex items-start gap-3">
+        <div className="w-1 h-full bg-gradient-to-b from-cyan-400 to-cyan-600 rounded-full"></div>
+        <div className="flex-1">
+          <h3 className="text-cyan-300 font-bold">{notification.title}</h3>
+          <p className="text-cyan-500/80 text-sm mt-1">{notification.description}</p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default CyberUI;
