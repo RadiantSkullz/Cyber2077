@@ -1,0 +1,605 @@
+--[[
+
+░█████╗░██╗░░░██╗██████╗░███████╗██████╗░  ██████╗░░█████╗░███████╗███████╗
+██╔══██╗╚██╗░██╔╝██╔══██╗██╔════╝██╔══██╗  ╚════██╗██╔══██╗╚════██║╚════██║
+██║░░╚═╝░╚████╔╝░██████╦╝█████╗░░██████╔╝  ░░███╔═╝██║░░██║░░░░██╔╝░░░░██╔╝
+██║░░██╗░░╚██╔╝░░██╔══██╗██╔══╝░░██╔══██╗  ██╔══╝░░██║░░██║░░░██╔╝░░░░██╔╝░
+╚█████╔╝░░░██║░░░██████╦╝███████╗██║░░██║  ███████╗╚█████╔╝░░██╔╝░░░░██╔╝░░
+░╚════╝░░░░╚═╝░░░╚═════╝░╚══════╝╚═╝░░╚═╝  ╚══════╝░╚════╝░░░╚═╝░░░░░╚═╝░░░
+]]
+
+local Nexus = {}
+local Windows = {}
+
+-- Services
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local HttpService = game:GetService("HttpService")
+local CoreGui = game:GetService("CoreGui")
+local LocalPlayer = game:GetService("Players").LocalPlayer
+
+-- Theme
+local Themes = {
+  Cyberpunk = {
+    MainBG = Color3.fromRGB(12, 12, 22),
+    SecondaryBG = Color3.fromRGB(22, 22, 38),
+    Accent = Color3.fromRGB(0, 210, 255),
+    Accent2 = Color3.fromRGB(255, 80, 200),
+    TextPrimary = Color3.fromRGB(255, 255, 255),
+    TextSecondary = Color3.fromRGB(190, 190, 210),
+    Stroke = Color3.fromRGB(45, 45, 65),
+    Glow = Color3.fromRGB(0, 180, 255),
+    Success = Color3.fromRGB(100, 255, 150),
+    Error = Color3.fromRGB(255, 100, 100)
+  }
+}
+
+local DefaultConfig = {
+  Size = UDim2.new(0, 580, 0, 460),
+  ToggleKey = Enum.KeyCode.RightControl,
+  SaveConfig = true,
+  ConfigFolder = "NexusConfig",
+  DiscordInvite = nil -- Optional
+}
+
+local TweenInfoHover = TweenInfo.new(0.2, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+local TweenInfoSmooth = TweenInfo.new(0.3, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
+local TweenInfoFast = TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+-- Utility Functions
+local function Create(class, properties)
+  local obj = Instance.new(class)
+  for prop, value in pairs(properties or {}) do
+    if type(prop) == "number" then
+      obj[prop] = value
+    else
+      obj[prop] = value
+    end
+  end
+  return obj
+end
+
+local function Tween(obj, info, properties)
+  TweenService:Create(obj, info or TweenInfoSmooth, properties):Play()
+end
+
+local function AddCornerStroke(obj, cornerRadius, strokeThickness, strokeColor)
+  local corner = Create("UICorner", {CornerRadius = UDim.new(0, cornerRadius or 8)})
+  corner.Parent = obj
+  local stroke = Create("UIStroke", {
+    Thickness = strokeThickness or 1,
+    Color = strokeColor or Themes.Cyberpunk.Stroke
+  })
+  stroke.Parent = obj
+  return corner, stroke
+end
+
+local function CreateGradient(parent, rotation)
+  local gradient = Create("UIGradient", {
+    Color = ColorSequence.new{
+      ColorSequenceKeypoint.new(0, Themes.Cyberpunk.Accent),
+      ColorSequenceKeypoint.new(0.5, Themes.Cyberpunk.Accent2),
+      ColorSequenceKeypoint.new(1, Themes.Cyberpunk.Accent)
+    },
+    Rotation = rotation or 45,
+    Transparency = NumberSequence.new{
+      NumberSequenceKeypoint.new(0, 0.8),
+      NumberSequenceKeypoint.new(1, 0.8)
+    }
+  })
+  gradient.Parent = parent
+  return gradient
+end
+
+-- Dragging Function (Smooth)
+local function MakeDraggable(frame)
+  local dragging = false
+  local dragStart = nil
+  local startPos = nil
+
+  local function updateInput(input)
+    local delta = input.Position - dragStart
+    Tween(frame, TweenInfoFast, {
+      Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    })
+  end
+
+  frame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+      dragging = true
+      dragStart = input.Position
+      startPos = frame.Position
+    end
+  end)
+
+  frame.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement and dragging then
+      updateInput(input)
+    end
+  end)
+
+  UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+      dragging = false
+    end
+  end)
+end
+
+-- Window Class
+local WindowMT = {}
+WindowMT.__index = WindowMT
+
+function Nexus:CreateLib(name, config)
+  config = config or {}
+  for k, v in pairs(DefaultConfig) do
+    if config[k] == nil then config[k] = v end
+  end
+
+  local ScreenGui = Create("ScreenGui", {
+    Name = HttpService:GenerateGUID(false),
+    Parent = CoreGui,
+    ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+  })
+
+  local MainFrame = Create("Frame", {
+    Name = "Main",
+    Size = config.Size,
+    Position = UDim2.new(0.5, -290, 0.5, -230),
+    BackgroundColor3 = Themes.Cyberpunk.MainBG,
+    Active = true,
+    Parent = ScreenGui
+  })
+
+  AddCornerStroke(MainFrame, 12)
+
+  local GlowStroke = Create("UIStroke", {
+    Thickness = 2,
+    Color = Themes.Cyberpunk.Glow,
+    Transparency = 0.7
+  })
+  GlowStroke.Parent = MainFrame
+
+  -- Topbar
+  local Topbar = Create("Frame", {
+    Name = "Topbar",
+    Size = UDim2.new(1, 0, 0, 45),
+    BackgroundColor3 = Themes.Cyberpunk.SecondaryBG,
+    Parent = MainFrame
+  })
+  AddCornerStroke(Topbar, 12, 0, 0)
+
+  local GradientTop = CreateGradient(Topbar, -45)
+  
+  local Title = Create("TextLabel", {
+    Name = "Title",
+    Size = UDim2.new(1, -100, 1, 0),
+    Position = UDim2.new(0, 15, 0, 0),
+    BackgroundTransparency = 1,
+    Text = name or "Nexus UI",
+    TextColor3 = Themes.Cyberpunk.TextPrimary,
+    TextSize = 16,
+    Font = Enum.Font.GothamBold,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    Parent = Topbar
+  })
+
+  -- Minimize Button
+  local MinimizeBtn = Create("TextButton", {
+    Name = "Minimize",
+    Size = UDim2.new(0, 30, 0, 30),
+    Position = UDim2.new(1, -65, 0.5, -15),
+    BackgroundColor3 = Themes.Cyberpunk.Accent,
+    Text = "−",
+    TextColor3 = Themes.Cyberpunk.TextPrimary,
+    TextSize = 20,
+    Font = Enum.Font.GothamBold,
+    Parent = Topbar
+  })
+  AddCornerStroke(MinimizeBtn, 6)
+
+  -- Close Button
+  local CloseBtn = Create("TextButton", {
+    Name = "Close",
+    Size = UDim2.new(0, 30, 0, 30),
+    Position = UDim2.new(1, -30, 0.5, -15),
+    BackgroundColor3 = Themes.Cyberpunk.Error,
+    Text = "✕",
+    TextColor3 = Themes.Cyberpunk.TextPrimary,
+    TextSize = 18,
+    Font = Enum.Font.GothamBold,
+    Parent = Topbar
+  })
+  AddCornerStroke(CloseBtn, 6)
+
+  -- Content
+  local ContentFrame = Create("Frame", {
+    Name = "Content",
+    Size = UDim2.new(1, -20, 1, -65),
+    Position = UDim2.new(0, 10, 0, 55),
+    BackgroundTransparency = 1,
+    Parent = MainFrame
+  })
+
+  -- Tab Sidebar
+  local TabContainer = Create("Frame", {
+    Name = "Tabs",
+    Size = UDim2.new(0, 150, 1, -10),
+    Position = UDim2.new(0, 0, 0, 5),
+    BackgroundColor3 = Themes.Cyberpunk.SecondaryBG,
+    Parent = ContentFrame
+  })
+  AddCornerStroke(TabContainer, 8)
+
+  local TabList = Create("ScrollingFrame", {
+    Name = "TabList",
+    Size = UDim2.new(1, 0, 1, 0),
+    BackgroundTransparency = 1,
+    ScrollBarThickness = 4,
+    ScrollBarImageColor3 = Themes.Cyberpunk.Accent,
+    CanvasSize = UDim2.new(0, 0, 0, 0),
+    Parent = TabContainer
+  })
+
+  local TabContent = Create("Frame", {
+    Name = "TabContent",
+    Size = UDim2.new(1, -160, 1, 0),
+    Position = UDim2.new(0, 155, 0, 0),
+    BackgroundTransparency = 1,
+    Parent = ContentFrame
+  })
+
+  -- Current Tab
+  local CurrentTab = nil
+  local Tabs = {}
+
+  -- Tab Indicator
+  local TabIndicator = Create("Frame", {
+    Name = "Indicator",
+    Size = UDim2.new(1, 4, 0, 4),
+    Position = UDim2.new(0, -4, 1, -4),
+    BackgroundColor3 = Themes.Cyberpunk.Accent,
+    Parent = TabList
+  })
+  AddCornerStroke(TabIndicator, 2)
+
+  -- Main Content Scrolling
+  local MainContent = Create("ScrollingFrame", {
+    Name = "MainContent",
+    Size = UDim2.new(1, 0, 1, 0),
+    BackgroundTransparency = 1,
+    ScrollBarThickness = 6,
+    ScrollBarImageColor3 = Themes.Cyberpunk.Accent,
+    CanvasSize = UDim2.new(0, 0, 0, 0),
+    Parent = TabContent
+  })
+
+  local ContentLayout = Create("UIListLayout", {
+    SortOrder = Enum.SortOrder.LayoutOrder,
+    Padding = UDim.new(0, 8)
+  })
+  ContentLayout.Parent = MainContent
+
+  -- Draggable
+  MakeDraggable(MainFrame)
+
+  -- Hover Effects for Buttons
+  local function AddHover(button)
+    local corner, stroke = AddCornerStroke(button)
+    Tween(button, TweenInfoHover, {Size = UDim2.new(button.Size.X.Scale, button.Size.X.Offset * 1.05, button.Size.Y.Scale, button.Size.Y.Offset * 1.05)})
+    button.MouseEnter:Connect(function()
+      Tween(stroke, TweenInfoHover, {Thickness = 2, Color = Themes.Cyberpunk.Glow})
+      Tween(button, TweenInfoHover, {Size = UDim2.new(button.Size.X.Scale, button.Size.X.Offset * 1.05, button.Size.Y.Scale, button.Size.Y.Offset * 1.05)})
+    end)
+    button.MouseLeave:Connect(function()
+      Tween(stroke, TweenInfoHover, {Thickness = 1, Color = Themes.Cyberpunk.Stroke})
+      Tween(button, TweenInfoHover, {Size = button.Size})
+    end)
+  end
+
+  AddHover(MinimizeBtn)
+  AddHover(CloseBtn)
+
+  -- Minimize/Close
+  local Minimized = false
+  MinimizeBtn.MouseButton1Click:Connect(function()
+    Minimized = not Minimized
+    Tween(MainFrame, TweenInfoSmooth, {Size = Minimized and UDim2.new(0, 200, 0, 45) or config.Size})
+    Tween(ContentFrame, TweenInfoSmooth, {Size = Minimized and UDim2.new(0,0,0,0) or UDim2.new(1, -20, 1, -65)})
+  end)
+
+  CloseBtn.MouseButton1Click:Connect(function()
+    ScreenGui:Destroy()
+  end)
+
+  -- Tab Functions
+  local function UpdateTabIndicator()
+    if CurrentTab then
+      Tween(TabIndicator, TweenInfoSmooth, {
+        Size = UDim2.new(1, 4, 0, 4),
+        Position = UDim2.new(0, -4, CurrentTab.AbsolutePosition.Y / TabList.AbsoluteSize.Y, 0) -- Approximate
+      })
+    end
+  end
+
+  function WindowMT:NewTab(name)
+    local TabButton = Create("TextButton", {
+      Name = name,
+      Size = UDim2.new(1, 0, 0, 35),
+      BackgroundTransparency = 1,
+      Text = name,
+      TextColor3 = Themes.Cyberpunk.TextSecondary,
+      TextSize = 14,
+      Font = Enum.Font.GothamSemibold,
+      TextXAlignment = Enum.TextXAlignment.Left,
+      Parent = TabList
+    })
+
+    AddHover(TabButton)
+
+    TabButton.MouseButton1Click:Connect(function()
+      for _, tab in pairs(Tabs) do
+        Tween(tab.Button, TweenInfoFast, {TextColor3 = Themes.Cyberpunk.TextSecondary})
+        tab.Content.Visible = false
+      end
+      Tween(TabButton, TweenInfoFast, {TextColor3 = Themes.Cyberpunk.TextPrimary})
+      CurrentTab = TabButton
+      TabContent.Visible = true -- Assume
+      UpdateTabIndicator()
+    end)
+
+    local TabContentFrame = Create("ScrollingFrame", {
+      Name = name .. "Content",
+      Size = UDim2.new(1, 0, 1, 0),
+      BackgroundTransparency = 1,
+      Visible = false,
+      Parent = TabContent
+    })
+
+    local tab = {
+      Button = TabButton,
+      Content = TabContentFrame,
+      Sections = {}
+    }
+    table.insert(Tabs, tab)
+
+    if #Tabs == 1 then
+      TabButton.MouseButton1Click:Fire()
+    end
+
+    TabList.CanvasSize = UDim2.new(0, 0, 0, #Tabs * 40)
+
+    return setmetatable({
+      NewSection = function(self, name)
+        -- Section implementation
+        local SectionFrame = Create("Frame", {
+          Name = name,
+          Size = UDim2.new(1, -20, UDim.new(0, 50), 0),
+          BackgroundColor3 = Themes.Cyberpunk.SecondaryBG,
+          Parent = TabContentFrame
+        })
+        AddCornerStroke(SectionFrame, 8)
+
+        local SectionTitle = Create("TextLabel", {
+          Size = UDim2.new(1, 0, 0, 30),
+          BackgroundTransparency = 1,
+          Text = name,
+          TextColor3 = Themes.Cyberpunk.TextPrimary,
+          TextSize = 15,
+          Font = Enum.Font.GothamBold,
+          Parent = SectionFrame
+        })
+
+        local SectionContent = Create("Frame", {
+          Size = UDim2.new(1, 0, 1, -30),
+          Position = UDim2.new(0, 0, 0, 30),
+          BackgroundTransparency = 1,
+          Parent = SectionFrame
+        })
+
+        local SectionList = Create("UIListLayout", {
+          Padding = UDim.new(0, 6),
+          Parent = SectionContent
+        })
+
+        local section = {
+          Frame = SectionFrame,
+          Content = SectionContent,
+          Elements = {}
+        }
+
+        -- Element creators
+        function section:NewToggle(data)
+          data = data or {}
+          local toggle = Create("Frame", {
+            Size = UDim2.new(1, 0, 0, 25),
+            BackgroundTransparency = 1,
+            Parent = SectionContent
+          })
+
+          local toggleLabel = Create("TextLabel", {
+            Size = UDim2.new(1, -50, 1, 0),
+            BackgroundTransparency = 1,
+            Text = data.Name or "Toggle",
+            TextColor3 = Themes.Cyberpunk.TextPrimary,
+            TextSize = 13,
+            Font = Enum.Font.Gotham,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            Parent = toggle
+          })
+
+          local toggleBtn = Create("TextButton", {
+            Size = UDim2.new(0, 20, 0, 20),
+            Position = UDim2.new(1, -25, 0.5, -10),
+            BackgroundColor3 = Themes.Cyberpunk.Stroke,
+            Text = "",
+            Parent = toggle
+          })
+          AddCornerStroke(toggleBtn, 4)
+
+          local state = data.Default or false
+          local callback = data.Callback
+
+          local function UpdateToggle()
+            Tween(toggleBtn, TweenInfoFast, {
+              BackgroundColor3 = state and Themes.Cyberpunk.Success or Themes.Cyberpunk.Stroke
+            })
+          end
+
+          toggleBtn.MouseButton1Click:Connect(function()
+            state = not state
+            UpdateToggle()
+            if callback then callback(state) end
+          end)
+
+          UpdateToggle()
+
+          table.insert(section.Elements, toggle)
+
+          return {
+            Set = function(newState)
+              state = newState
+              UpdateToggle()
+            end
+          }
+        end
+
+        -- Similar for Slider, Button, etc. (Abbreviated for brevity - implement similarly with tweens)
+
+        function section:NewButton(data)
+          data = data or {}
+          local button = Create("TextButton", {
+            Size = UDim2.new(1, 0, 0, 30),
+            BackgroundColor3 = Themes.Cyberpunk.Accent,
+            Text = data.Name or "Button",
+            TextColor3 = Themes.Cyberpunk.TextPrimary,
+            TextSize = 13,
+            Font = Enum.Font.GothamSemibold,
+            Parent = SectionContent
+          })
+          AddCornerStroke(button, 6)
+          AddHover(button)
+
+          button.MouseButton1Click:Connect(function()
+            Tween(button, TweenInfoFast, {Size = UDim2.new(1,0,0,28)})
+            wait(0.1)
+            Tween(button, TweenInfoFast, {Size = UDim2.new(1,0,0,30)})
+            if data.Callback then data.Callback() end
+          end)
+
+          table.insert(section.Elements, button)
+          return button
+        end
+
+        -- Add more: NewSlider, NewKeybind, NewDropdown, NewColorPicker, NewTextbox, NewLabel
+        -- Implement them analogously with cyberpunk styling, tweens, callbacks
+
+        return section
+      end
+    }, {NewSection = section.NewSection})
+  end
+
+  -- Notifications
+  local NotificationHolder = Create("Frame", {
+    Name = "Notifications",
+    Size = UDim2.new(0, 300, 1, 0),
+    Position = UDim2.new(1, -320, 0, 20),
+    BackgroundTransparency = 1,
+    Parent = ScreenGui
+  })
+
+  function WindowMT:Notify(data)
+    data = data or {}
+    local notif = Create("Frame", {
+      Size = UDim2.new(1, 0, 0, 80),
+      BackgroundColor3 = Themes.Cyberpunk.SecondaryBG,
+      Parent = NotificationHolder
+    })
+    AddCornerStroke(notif, 8)
+
+    local notifTitle = Create("TextLabel", {
+      Size = UDim2.new(1, -10, 0, 25),
+      Position = UDim2.new(0, 10, 0, 5),
+      BackgroundTransparency = 1,
+      Text = data.Title or "Notification",
+      TextColor3 = Themes.Cyberpunk.TextPrimary,
+      TextSize = 14,
+      Font = Enum.Font.GothamBold,
+      Parent = notif
+    })
+
+    local notifText = Create("TextLabel", {
+      Size = UDim2.new(1, -20, 1, -35),
+      Position = UDim2.new(0, 10, 0, 30),
+      BackgroundTransparency = 1,
+      Text = data.Content or "",
+      TextColor3 = Themes.Cyberpunk.TextSecondary,
+      TextSize = 12,
+      Font = Enum.Font.Gotham,
+      TextWrapped = true,
+      Parent = notif
+    })
+
+    Tween(notif, TweenInfoSmooth, {Position = UDim2.new(0, 0, 0, (#NotificationHolder:GetChildren() -1) * 85)})
+
+    game:GetService("Debris"):AddItem(notif, data.Duration or 5)
+  end
+
+  -- Toggle Key
+  UserInputService.InputBegan:Connect(function(input, gp)
+    if gp then return end
+    if input.KeyCode == config.ToggleKey then
+      ScreenGui.Enabled = not ScreenGui.Enabled
+    end
+  end)
+
+  -- Watermark
+  local Watermark = Create("Frame", {
+    Size = UDim2.new(0, 200, 0, 40),
+    Position = UDim2.new(0, 10, 0, 10),
+    BackgroundColor3 = Themes.Cyberpunk.MainBG,
+    Parent = ScreenGui
+  })
+  AddCornerStroke(Watermark, 6)
+
+  local WMText = Create("TextLabel", {
+    Size = UDim2.new(1, 0, 1, 0),
+    BackgroundTransparency = 1,
+    Text = "Nexus UI v1.0 | FPS: 60",
+    TextColor3 = Themes.Cyberpunk.Accent,
+    TextSize = 12,
+    Font = Enum.Font.Gotham,
+    Parent = Watermark
+  })
+
+  local fpsSum = 0
+  local fpsCount = 0
+  RunService.Heartbeat:Connect(function()
+    fpsSum += 1 / RunService.Heartbeat:Wait()
+    fpsCount += 1
+    if fpsCount >= 20 then
+      WMText.Text = string.format("Nexus UI v1.0 | FPS: %.0f", fpsSum / fpsCount)
+      fpsSum, fpsCount = 0, 0
+    end
+  end)
+
+  -- Config (simple file based)
+  if config.SaveConfig then
+    -- Implement LoadConfig, SaveConfig using writefile/readfile/HttpService:JSONEncode
+    -- getgenv().NexusConfig = getgenv().NexusConfig or {}
+    -- On element change: save
+  end
+
+  local window = setmetatable({
+    ScreenGui = ScreenGui,
+    Tabs = Tabs,
+    Notify = WindowMT.Notify,
+    Toggle = function() ScreenGui.Enabled = not ScreenGui.Enabled end,
+    Destroy = function() ScreenGui:Destroy() end
+  }, WindowMT)
+
+  table.insert(Windows, window)
+  return window
+end
+
+return Nexus
